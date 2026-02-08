@@ -1,4 +1,6 @@
 import os
+import datetime
+import random
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -6,36 +8,73 @@ from apscheduler.schedulers.background import BackgroundScheduler
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = int(os.getenv("CHAT_ID"))
 
-# Сообщение напоминания
-REMINDER_TEXT = "💊 Не забудь выпить витамин D! ❤️"
+last_answer_date = None  # запоминаем день
 
-async def remind(context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("✅ Выпила", callback_data="done")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=CHAT_ID, text=REMINDER_TEXT, reply_markup=reply_markup)
+praise_yes = [
+    "Умничка 😘 Горжусь тобой 💖",
+    "Милашка ты, ать по головушке тебя 🌸",
+    "Вот так держать 💪❤️",
+    "Заюшка Юляшка так держать! ☀️"
+]
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "done":
-        await query.edit_message_text(text="Умничка! 🌞 Горд за тебя ❤️")
+praise_no = [
+    "Ничего страшного, завтра обязательно надо принять 💊❤️",
+    "Главное — не забыть завтра, я напомню 😘",
+    "Ты всё равно умничка 🌷, напомню завтра"
+]
+
+
+def get_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Да, приняла", callback_data="yes")],
+        [InlineKeyboardButton("❌ Пока нет, приму сегодня позже или уже завтра", callback_data="no")]
+    ])
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я буду напоминать тебе о витамине D ☀️")
+    text = "Привет 💖 Я бот-напоминалка про витамин D ☀️\nТы сегодня уже приняла витаминку?"
+    await update.message.reply_text(text, reply_markup=get_keyboard())
+
+
+async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
+    global last_answer_date
+    today = datetime.date.today()
+
+    if last_answer_date == today:
+        return  # уже ответила сегодня
+
+    text = "💊 Ты сегодня уже приняла витамин D, Юляшка?"
+    await context.bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=get_keyboard())
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global last_answer_date
+    query = update.callback_query
+    await query.answer()
+
+    today = datetime.date.today()
+
+    if query.data == "yes":
+        last_answer_date = today
+        await query.edit_message_text(random.choice(praise_yes))
+
+    elif query.data == "no":
+        last_answer_date = today
+        await query.edit_message_text(random.choice(praise_no))
+
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Команды
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-    # Планировщик
-    scheduler = BackgroundScheduler(timezone="Europe/Berlin")  # подставь свой часовой пояс
-    scheduler.add_job(remind, "cron", hour=11, minute=0, args=[app.bot])
+    scheduler = BackgroundScheduler(timezone="Europe/Berlin")
+    scheduler.add_job(daily_reminder, "cron", hour=19, minute=0)
     scheduler.start()
 
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
